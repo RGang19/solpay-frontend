@@ -52,13 +52,42 @@ const Receive = () => {
   }, [navigate, toast]);
 
   const handleCopy = async () => {
-    if (!walletAddress) {
-      return;
-    }
+    if (!walletAddress) return;
+    const text = walletAddress;
 
-    await navigator.clipboard.writeText(walletAddress);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const handleSuccess = () => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast({ title: 'Address Copied', description: 'Wallet address copied to clipboard.' });
+    };
+
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        handleSuccess();
+      } catch (err) {
+        // Fallback if clipboard API fails
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        handleSuccess();
+      }
+    } else {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        handleSuccess();
+      } catch (err) {
+        console.error('Fallback copy failed', err);
+      }
+      document.body.removeChild(textArea);
+    }
   };
 
   const handleShare = async () => {
@@ -123,9 +152,17 @@ const Receive = () => {
           </div>
 
           <p className="text-xs text-muted-foreground mb-1">Wallet Address</p>
-          <p className="text-sm font-mono text-foreground/80 text-center break-all px-2">
-            {walletAddress || 'Loading wallet address...'}
-          </p>
+          <div 
+            className="flex items-center justify-center gap-2 cursor-pointer group/address bg-white/5 hover:bg-white/10 p-3 -m-3 rounded-2xl transition-all"
+            onClick={handleCopy}
+          >
+            <p className="text-sm font-mono text-foreground/80 text-center break-all px-2 group-hover/address:text-foreground transition-colors flex-1">
+              {walletAddress || 'Loading wallet address...'}
+            </p>
+            <div className="shrink-0 p-1.5 rounded-lg bg-white/10 border border-white/10 opacity-0 group-hover/address:opacity-100 transition-all">
+              {copied ? <Check className="w-3.5 h-3.5 text-secondary" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+            </div>
+          </div>
         </motion.div>
 
         <motion.div

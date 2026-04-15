@@ -160,7 +160,7 @@ const SendMoney = () => {
       });
     }
 
-    return Array.from(uniqueContacts.values()).slice(0, 6);
+    return Array.from(uniqueContacts.values()).slice(0, 10);
   }, [transactions, user]);
 
   const numericAmount = Number(amount);
@@ -258,6 +258,7 @@ const SendMoney = () => {
 
   const handleContactSelect = (contact: RecentContact) => {
     setRecipient(contact.value);
+    setMode(contact.kind);
   };
 
   return (
@@ -338,6 +339,50 @@ const SendMoney = () => {
                 <p className="text-[11px] text-muted-foreground mt-1">{option.description}</p>
               </button>
             ))}
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="mb-6"
+        >
+          <div className="flex items-center justify-between mb-3 px-1">
+            <h3 className="text-sm font-heading font-semibold text-foreground">Recent Recipient</h3>
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{recentContacts.length} total</span>
+          </div>
+          
+          <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-none -mx-4 px-4">
+            {recentContacts.map((contact) => (
+              <button
+                key={contact.value}
+                onClick={() => handleContactSelect(contact)}
+                className="flex flex-col items-center gap-2 min-w-[70px] group transition-all"
+              >
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 border ${
+                  recipient === contact.value 
+                    ? 'bg-primary/20 border-primary shadow-[0_0_20px_rgba(236,72,153,0.2)]' 
+                    : 'bg-muted/30 border-border/50 hover:bg-muted/50 group-hover:border-primary/30'
+                }`}>
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center">
+                    <span className="text-sm font-bold gradient-text">
+                      {contact.kind === 'phone' ? 'P' : 'W'}
+                    </span>
+                  </div>
+                </div>
+                <span className={`text-[10px] font-medium truncate w-16 text-center transition-colors ${
+                  recipient === contact.value ? 'text-primary' : 'text-muted-foreground'
+                }`}>
+                  {contact.label.length > 12 ? `${contact.label.slice(0, 4)}...` : contact.label}
+                </span>
+              </button>
+            ))}
+            {recentContacts.length === 0 && (
+              <div className="w-full py-4 text-center glass-card border-dashed">
+                <p className="text-xs text-muted-foreground">No recent recipients found</p>
+              </div>
+            )}
           </div>
         </motion.div>
 

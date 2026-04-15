@@ -104,6 +104,7 @@ const Dashboard = () => {
   const [activeView, setActiveView] = useState<'personal' | 'merchant'>('personal');
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [walletCopied, setWalletCopied] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('authToken');
@@ -238,6 +239,44 @@ const Dashboard = () => {
     setTimeout(() => setCopiedId(null), 2000);
     toast({ title: 'Link Copied', description: 'Share this link with your customer.' });
   };
+  
+  const copyWallet = () => {
+    if (!user?.wallet_address) return;
+    const text = user.wallet_address;
+    
+    const handleSuccess = () => {
+      setWalletCopied(true);
+      setTimeout(() => setWalletCopied(false), 2000);
+      toast({ title: 'Address Copied', description: 'Wallet address copied to clipboard.' });
+    };
+
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text)
+        .then(handleSuccess)
+        .catch(() => {
+          // Fallback if clipboard API fails
+          const textArea = document.createElement("textarea");
+          textArea.value = text;
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
+          handleSuccess();
+        });
+    } else {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        handleSuccess();
+      } catch (err) {
+        toast({ title: 'Copy Failed', description: 'Please copy manually.', variant: 'destructive' });
+      }
+      document.body.removeChild(textArea);
+    }
+  };
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#0A051C]">
@@ -359,7 +398,17 @@ const Dashboard = () => {
                 {user && (
                   <div className="pt-4 border-t border-white/10">
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Wallet Address</p>
-                    <p className="text-xs text-muted-foreground break-all font-mono">{user.wallet_address}</p>
+                    <div 
+                      className="flex items-center justify-between gap-3 group/wallet cursor-pointer bg-white/5 hover:bg-white/10 p-2 -m-2 rounded-xl transition-all" 
+                      onClick={copyWallet}
+                    >
+                      <p className="text-xs text-muted-foreground break-all font-mono opacity-80 group-hover/wallet:opacity-100 transition-opacity flex-1">
+                        {user.wallet_address}
+                      </p>
+                      <div className="p-1.5 rounded-lg bg-white/10 border border-white/10 text-muted-foreground group-hover/wallet:text-white transition-all shrink-0">
+                        {walletCopied ? <Check className="w-3.5 h-3.5 text-secondary" /> : <Copy className="w-3.5 h-3.5" />}
+                      </div>
+                    </div>
                   </div>
                 )}
               </motion.div>
