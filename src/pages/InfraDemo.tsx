@@ -1,0 +1,258 @@
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
+import { Bell, CheckCircle2, Code2, CreditCard, KeyRound, Radio, Wallet } from 'lucide-react';
+import { infraClient, type InfraPayment, type InfraUser, type NotificationItem } from '@/lib/infraClient';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
+
+const shortAddress = (value: string) => `${value.slice(0, 4)}...${value.slice(-4)}`;
+
+const sdkSnippet = `import { SolanaAppInfraClient } from '@solana-app-infra/sdk';
+
+const infra = new SolanaAppInfraClient({ apiUrl: 'https://api.yourapp.com' });
+
+const session = await infra.auth.loginWithWallet(window.solana);
+infra.setToken(session.token);
+
+const payment = await infra.payments.createPayment({ amount: 0.05 });
+
+infra.notifications.subscribeNotifications((event) => {
+  console.log(event.type, event.payload);
+});`;
+
+const apiSnippet = `POST /api/auth/wallet/challenge
+POST /api/auth/wallet/verify
+GET  /api/notifications
+POST /api/infra/payments
+POST /api/infra/payments/:id/verify
+WS   /ws?token=<jwt>`;
+
+const InfraDemo = () => {
+  const { toast } = useToast();
+  const [token, setToken] = useState(() => localStorage.getItem('infraToken') || '');
+  const [user, setUser] = useState<InfraUser | null>(null);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [payment, setPayment] = useState<InfraPayment | null>(null);
+  const [amount, setAmount] = useState('0.01');
+  const [recipient, setRecipient] = useState('');
+  const [isBusy, setIsBusy] = useState(false);
+
+  const unreadCount = useMemo(() => notifications.filter((item) => !item.read).length, [notifications]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    const loadSession = async () => {
+      try {
+        const currentUser = await infraClient.getCurrentUser(token);
+        const currentNotifications = await infraClient.getNotifications(token);
+        setUser(currentUser);
+        setNotifications(currentNotifications);
+      } catch {
+        localStorage.removeItem('infraToken');
+        setToken('');
+      }
+    };
+
+    void loadSession();
+    return infraClient.subscribeNotifications(token, (notification) => {
+      setNotifications((items) => [notification, ...items]);
+      toast({ title: notification.title, description: notification.body });
+    });
+  }, [toast, token]);
+
+  const login = async () => {
+    setIsBusy(true);
+    try {
+      const session = await infraClient.loginWithWallet();
+      localStorage.setItem('infraToken', session.token);
+      setToken(session.token);
+      setUser(session.user);
+      toast({ title: 'Wallet authenticated', description: shortAddress(session.user.wallet_address) });
+    } catch (error) {
+      toast({
+        title: 'Wallet login failed',
+        description: error instanceof Error ? error.message : 'Try again',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const createPayment = async () => {
+    if (!token) return;
+    setIsBusy(true);
+    try {
+      const response = await infraClient.createPayment(token, {
+        amount: Number(amount),
+        recipientAddress: recipient || undefined,
+        label: 'Solana App Infra demo',
+        message: 'SDK checkout payment',
+      });
+      setPayment(response.payment);
+      toast({ title: 'Payment request created', description: 'Open the Solana Pay link or scan the QR.' });
+    } catch (error) {
+      toast({
+        title: 'Payment creation failed',
+        description: error instanceof Error ? error.message : 'Check your backend env',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const verifyPayment = async () => {
+    if (!token || !payment) return;
+    setIsBusy(true);
+    try {
+      const response = await infraClient.verifyPayment(token, payment.id);
+      setPayment(response.payment);
+      toast({
+        title: response.verified ? 'Payment confirmed' : 'Still waiting',
+        description: response.verified ? 'A live notification was pushed.' : 'No confirmed transaction found yet.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Verification failed',
+        description: error instanceof Error ? error.message : 'Try again',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const sendTestNotification = async () => {
+    if (!token || !user) return;
+    await infraClient.sendNotification(token, {
+      userId: user.id,
+      type: 'demo.event',
+      title: 'Live SDK notification',
+      body: 'A third-party app can send this through the API or SDK.',
+    });
+  };
+
+  return (
+    <main className="min-h-screen bg-[#0b0d0e] text-white">
+      <section className="border-b border-white/10 bg-[url('https://images.unsplash.com/photo-1639762681057-408e52192e55?auto=format&fit=crop&w=1800&q=80')] bg-cover bg-center">
+        <div className="bg-black/75">
+          <div className="mx-auto grid min-h-[68vh] max-w-7xl gap-10 px-6 py-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+            <div className="text-left">
+              <p className="mb-4 inline-flex items-center gap-2 rounded-md border border-emerald-300/40 bg-emerald-300/10 px-3 py-1 text-sm text-emerald-100">
+                <Radio size={16} /> Solana developer infrastructure
+              </p>
+              <h1 className="max-w-3xl text-4xl font-semibold leading-tight md:text-6xl">
+                Wallet auth, live notifications, and Solana Pay through one SDK.
+              </h1>
+              <p className="mt-5 max-w-2xl text-lg text-zinc-200">
+                A reusable infrastructure layer for Solana apps that need onboarding, user communication, and native checkout without rebuilding the same plumbing every time.
+              </p>
+              <div className="mt-7 flex flex-wrap gap-3">
+                <Button onClick={login} disabled={isBusy} className="rounded-md bg-emerald-400 text-black hover:bg-emerald-300">
+                  <Wallet className="mr-2 h-4 w-4" /> {user ? 'Reconnect wallet' : 'Sign in with wallet'}
+                </Button>
+                <a href="#docs" className="rounded-md border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10">
+                  View integration docs
+                </a>
+              </div>
+            </div>
+            <div className="rounded-md border border-white/15 bg-black/60 p-5 text-left shadow-2xl">
+              <div className="mb-4 flex items-center justify-between">
+                <span className="text-sm text-zinc-300">Demo session</span>
+                <span className="rounded-md bg-emerald-400/15 px-2 py-1 text-xs text-emerald-200">{token ? 'connected' : 'not connected'}</span>
+              </div>
+              <div className="space-y-3">
+                <StatusRow icon={KeyRound} label="Auth" value={user ? shortAddress(user.wallet_address) : 'Wallet signature required'} />
+                <StatusRow icon={Bell} label="Notifications" value={`${notifications.length} total, ${unreadCount} unread`} />
+                <StatusRow icon={CreditCard} label="Payments" value={payment ? payment.status : 'No payment request'} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto grid max-w-7xl gap-5 px-6 py-8 lg:grid-cols-3">
+        <Panel title="Authentication" icon={KeyRound}>
+          <p className="text-sm text-zinc-300">Phantom-compatible wallet login signs a nonce, the backend verifies ownership, creates a user, and returns a JWT.</p>
+          {user && <p className="mt-4 rounded-md bg-white/5 p-3 text-sm text-zinc-200">User ID: {user.id}</p>}
+        </Panel>
+
+        <Panel title="Notifications" icon={Bell}>
+          <div className="flex items-center gap-2">
+            <Button onClick={sendTestNotification} disabled={!user} className="rounded-md bg-white text-black hover:bg-zinc-200">
+              Push test event
+            </Button>
+            <span className="text-sm text-zinc-400">WebSocket powered</span>
+          </div>
+          <div className="mt-4 max-h-60 space-y-2 overflow-auto">
+            {notifications.map((item) => (
+              <div key={item.id} className="rounded-md border border-white/10 bg-white/5 p-3 text-left">
+                <p className="text-sm font-medium">{item.title}</p>
+                <p className="text-sm text-zinc-400">{item.body}</p>
+              </div>
+            ))}
+            {notifications.length === 0 && <p className="text-sm text-zinc-400">Live events will appear here.</p>}
+          </div>
+        </Panel>
+
+        <Panel title="Payments" icon={CreditCard}>
+          <div className="space-y-3">
+            <Input value={amount} onChange={(event) => setAmount(event.target.value)} className="rounded-md bg-white/10" placeholder="Amount in SOL" />
+            <Input value={recipient} onChange={(event) => setRecipient(event.target.value)} className="rounded-md bg-white/10" placeholder="Recipient wallet, optional" />
+            <Button onClick={createPayment} disabled={!user || isBusy} className="w-full rounded-md bg-emerald-400 text-black hover:bg-emerald-300">
+              Create Solana Pay request
+            </Button>
+          </div>
+          {payment && (
+            <div className="mt-4 space-y-3">
+              <div className="rounded-md bg-white p-3">
+                <QRCodeSVG value={payment.checkout_url} className="h-full w-full" />
+              </div>
+              <a className="block break-all text-sm text-emerald-200" href={payment.checkout_url}>Open Solana Pay link</a>
+              <Button onClick={verifyPayment} disabled={isBusy} className="w-full rounded-md border border-white/20 bg-transparent hover:bg-white/10">
+                <CheckCircle2 className="mr-2 h-4 w-4" /> Verify payment
+              </Button>
+            </div>
+          )}
+        </Panel>
+      </section>
+
+      <section id="docs" className="border-t border-white/10 bg-zinc-950 px-6 py-10 text-left">
+        <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-2">
+          <Panel title="SDK Usage" icon={Code2}>
+            <pre className="overflow-auto rounded-md bg-black p-4 text-sm text-zinc-200"><code>{sdkSnippet}</code></pre>
+          </Panel>
+          <Panel title="API Surface" icon={Radio}>
+            <pre className="overflow-auto rounded-md bg-black p-4 text-sm text-zinc-200"><code>{apiSnippet}</code></pre>
+            <p className="mt-4 text-sm text-zinc-300">The demo is a consumer of the same backend APIs and package shape intended for third-party Solana apps.</p>
+          </Panel>
+        </div>
+      </section>
+    </main>
+  );
+};
+
+const Panel = ({ title, icon: Icon, children }: { title: string; icon: typeof KeyRound; children: ReactNode }) => (
+  <div className="rounded-md border border-white/10 bg-[#121619] p-5 text-left shadow-xl">
+    <div className="mb-4 flex items-center gap-3">
+      <span className="rounded-md bg-emerald-400/15 p-2 text-emerald-200"><Icon size={18} /></span>
+      <h2 className="text-xl font-semibold">{title}</h2>
+    </div>
+    {children}
+  </div>
+);
+
+const StatusRow = ({ icon: Icon, label, value }: { icon: typeof KeyRound; label: string; value: string }) => (
+  <div className="flex items-center justify-between gap-4 rounded-md border border-white/10 bg-white/5 p-3">
+    <div className="flex items-center gap-3 text-zinc-200">
+      <Icon size={18} />
+      <span>{label}</span>
+    </div>
+    <span className="max-w-[12rem] truncate text-sm text-zinc-400">{value}</span>
+  </div>
+);
+
+export default InfraDemo;

@@ -1,5 +1,5 @@
-import Login from './Login';
+import InfraDemo from './InfraDemo';
 
-const Index = () => <Login />;
+const Index = () => <InfraDemo />;
 
 export default Index;

@@ -1,0 +1,21 @@
+{
+  "name": "@solana-app-infra/sdk",
+  "version": "0.1.0",
+  "description": "Auth, notifications, and Solana Pay infrastructure SDK for Solana apps.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "peerDependencies": {
+    "@solana/web3.js": "^1.98.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  },
+  "license": "MIT"
+}
