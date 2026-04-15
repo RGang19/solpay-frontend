@@ -22,6 +22,30 @@ Verifies the signed message and returns a JWT.
 
 Returns the current authenticated user.
 
+`POST /api/auth/send-otp`
+
+Sends a phone OTP. The demo backend uses `123456`.
+
+```json
+{ "phone": "+15551234567" }
+```
+
+`POST /api/auth/verify-otp`
+
+Logs in an existing phone user, or creates a new account with a custodial Solana wallet if the phone is new.
+
+```json
+{ "phone": "+15551234567", "otp": "123456" }
+```
+
+`POST /api/auth/phone/attach`
+
+Attaches a verified phone number to the authenticated wallet user.
+
+```json
+{ "phone": "+15551234567", "otp": "123456" }
+```
+
 ## Notifications
 
 `GET /api/notifications`

@@ -56,6 +56,20 @@ const request = async <T>(path: string, options: { method?: string; body?: unkno
 };
 
 export const infraClient = {
+  sendPhoneOtp(phone: string) {
+    return request<{ message: string }>('/api/auth/send-otp', {
+      method: 'POST',
+      body: { phone },
+    });
+  },
+
+  loginWithPhone(phone: string, otp: string) {
+    return request<{ token: string; user: InfraUser; expiresAt?: string }>('/api/auth/verify-otp', {
+      method: 'POST',
+      body: { phone, otp },
+    });
+  },
+
   async loginWithWallet() {
     const provider = window.solana;
     if (!provider) {
@@ -78,6 +92,14 @@ export const infraClient = {
       },
     });
     return session;
+  },
+
+  attachPhoneToWallet(token: string, phone: string, otp: string) {
+    return request<{ user: InfraUser; message: string }>('/api/auth/phone/attach', {
+      method: 'POST',
+      token,
+      body: { phone, otp },
+    });
   },
 
   async getCurrentUser(token: string) {

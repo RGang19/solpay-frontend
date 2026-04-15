@@ -15,6 +15,9 @@ const infra = new SolanaAppInfraClient({ apiUrl: 'https://api.yourapp.com' });
 const session = await infra.auth.loginWithWallet(window.solana);
 infra.setToken(session.token);
 
+await infra.auth.sendPhoneOtp('+15551234567');
+await infra.auth.attachPhoneToWallet('+15551234567', '123456');
+
 const payment = await infra.payments.createPayment({ amount: 0.05 });
 
 infra.notifications.subscribeNotifications((event) => {
@@ -23,6 +26,9 @@ infra.notifications.subscribeNotifications((event) => {
 
 const apiSnippet = `POST /api/auth/wallet/challenge
 POST /api/auth/wallet/verify
+POST /api/auth/send-otp
+POST /api/auth/verify-otp
+POST /api/auth/phone/attach
 GET  /api/notifications
 POST /api/infra/payments
 POST /api/infra/payments/:id/verify
@@ -36,6 +42,8 @@ const InfraDemo = () => {
   const [payment, setPayment] = useState<InfraPayment | null>(null);
   const [amount, setAmount] = useState('0.01');
   const [recipient, setRecipient] = useState('');
+  const [phone, setPhone] = useState('');
+  const [otp, setOtp] = useState('');
   const [isBusy, setIsBusy] = useState(false);
 
   const unreadCount = useMemo(() => notifications.filter((item) => !item.read).length, [notifications]);
@@ -73,6 +81,64 @@ const InfraDemo = () => {
     } catch (error) {
       toast({
         title: 'Wallet login failed',
+        description: error instanceof Error ? error.message : 'Try again',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const sendOtp = async () => {
+    if (!phone.trim()) return;
+    setIsBusy(true);
+    try {
+      await infraClient.sendPhoneOtp(phone.trim());
+      toast({ title: 'OTP sent', description: 'Use 123456 for the demo OTP backend.' });
+    } catch (error) {
+      toast({
+        title: 'Could not send OTP',
+        description: error instanceof Error ? error.message : 'Try again',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const continueWithPhone = async () => {
+    if (!phone.trim() || !otp.trim()) return;
+    setIsBusy(true);
+    try {
+      const session = await infraClient.loginWithPhone(phone.trim(), otp.trim());
+      localStorage.setItem('infraToken', session.token);
+      setToken(session.token);
+      setUser(session.user);
+      toast({
+        title: 'Phone account ready',
+        description: `Wallet created: ${shortAddress(session.user.wallet_address)}`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Phone login failed',
+        description: error instanceof Error ? error.message : 'Try again',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const attachPhone = async () => {
+    if (!token || !phone.trim() || !otp.trim()) return;
+    setIsBusy(true);
+    try {
+      const response = await infraClient.attachPhoneToWallet(token, phone.trim(), otp.trim());
+      setUser(response.user);
+      toast({ title: 'Phone attached', description: `${phone.trim()} is now linked to this wallet.` });
+    } catch (error) {
+      toast({
+        title: 'Could not attach phone',
         description: error instanceof Error ? error.message : 'Try again',
         variant: 'destructive',
       });
@@ -176,8 +242,30 @@ const InfraDemo = () => {
 
       <section className="mx-auto grid max-w-7xl gap-5 px-6 py-8 lg:grid-cols-3">
         <Panel title="Authentication" icon={KeyRound}>
-          <p className="text-sm text-zinc-300">Phantom-compatible wallet login signs a nonce, the backend verifies ownership, creates a user, and returns a JWT.</p>
-          {user && <p className="mt-4 rounded-md bg-white/5 p-3 text-sm text-zinc-200">User ID: {user.id}</p>}
+          <p className="text-sm text-zinc-300">
+            Wallet users can attach a phone number after OTP verification. Phone-first users can create an account and custodial Solana wallet from OTP login.
+          </p>
+          <div className="mt-4 space-y-3">
+            <Input value={phone} onChange={(event) => setPhone(event.target.value)} className="rounded-md bg-white/10" placeholder="Mobile number" />
+            <Input value={otp} onChange={(event) => setOtp(event.target.value)} className="rounded-md bg-white/10" placeholder="OTP, demo is 123456" />
+            <div className="grid gap-2 sm:grid-cols-3">
+              <Button onClick={sendOtp} disabled={isBusy || !phone.trim()} className="rounded-md bg-white text-black hover:bg-zinc-200">
+                Send OTP
+              </Button>
+              <Button onClick={continueWithPhone} disabled={isBusy || !phone.trim() || !otp.trim()} className="rounded-md border border-white/20 bg-transparent hover:bg-white/10">
+                Create with phone
+              </Button>
+              <Button onClick={attachPhone} disabled={isBusy || !user || !phone.trim() || !otp.trim()} className="rounded-md bg-emerald-400 text-black hover:bg-emerald-300">
+                Attach to wallet
+              </Button>
+            </div>
+          </div>
+          {user && (
+            <div className="mt-4 space-y-2 rounded-md bg-white/5 p-3 text-sm text-zinc-200">
+              <p>User ID: {user.id}</p>
+              <p>Phone: {user.phone.startsWith('wallet:') ? 'Not attached yet' : user.phone}</p>
+            </div>
+          )}
         </Panel>
 
         <Panel title="Notifications" icon={Bell}>

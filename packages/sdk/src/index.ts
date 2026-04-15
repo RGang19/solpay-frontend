@@ -76,6 +76,21 @@ export class SolanaAppInfraClient {
   }
 
   auth = {
+    sendPhoneOtp: (phone: string) =>
+      this.request<{ message: string }>('/api/auth/send-otp', {
+        method: 'POST',
+        body: { phone },
+        auth: false,
+      }),
+    loginWithPhone: async (phone: string, otp: string): Promise<LoginResponse> => {
+      const session = await this.request<LoginResponse>('/api/auth/verify-otp', {
+        method: 'POST',
+        body: { phone, otp },
+        auth: false,
+      });
+      this.setToken(session.token);
+      return session;
+    },
     loginWithWallet: async (wallet: SolanaWallet): Promise<LoginResponse> => {
       const connected = await wallet.connect();
       const walletAddress = readWalletAddress(wallet, connected || undefined);
@@ -95,6 +110,11 @@ export class SolanaAppInfraClient {
       this.setToken(session.token);
       return session;
     },
+    attachPhoneToWallet: (phone: string, otp: string) =>
+      this.request<{ user: InfraUser; message: string }>('/api/auth/phone/attach', {
+        method: 'POST',
+        body: { phone, otp },
+      }),
     verifySession: () => this.request<{ user: InfraUser }>('/api/auth/session/me'),
     getCurrentUser: async () => {
       const response = await this.request<{ user: InfraUser }>('/api/auth/session/me');
