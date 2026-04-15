@@ -41,6 +41,7 @@ Logs in an existing phone user, or creates a new account with a custodial Solana
 `POST /api/auth/phone/attach`
 
 Attaches a verified phone number to the authenticated wallet user.
+If the phone already owns a mobile-created wallet, the signed wallet is added as an attached wallet under the same phone account and the response includes both wallets.
 
 ```json
 { "phone": "+15551234567", "otp": "123456" }

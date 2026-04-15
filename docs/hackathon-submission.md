@@ -6,7 +6,7 @@ Solana apps need the same core infrastructure before they can deliver their real
 
 ## Solution
 
-Solana App Infrastructure SDK is a unified infra layer for Solana apps. Developers integrate one SDK and get wallet login, optional phone-number linking, phone-first custodial wallet creation, live notifications, and Solana Pay payments backed by reusable APIs.
+Solana App Infrastructure SDK is a unified infra layer for Solana apps. Developers integrate one SDK and get wallet login, optional phone-number linking, one mobile-created wallet per phone number, attached external wallet display, live notifications, and Solana Pay payments backed by reusable APIs.
 
 One-line pitch:
 

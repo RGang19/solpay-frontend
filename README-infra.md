@@ -2,7 +2,7 @@
 
 A reusable developer infrastructure stack for Solana applications. It gives app builders three primitives in one toolkit:
 
-- Wallet-based authentication with signed-message verification, phone-number linking, phone-first OTP onboarding, and JWT sessions
+- Wallet-based authentication with signed-message verification, phone-number linking, phone-first OTP onboarding, one primary mobile wallet per phone number, linked external wallets, and JWT sessions
 - Real-time in-app notifications with stored read state and WebSocket delivery
 - Solana Pay payment intents with reference tracking, backend verification, and automatic payment notifications
 
@@ -70,11 +70,12 @@ Open `http://localhost:8080`.
 
 1. Connect Phantom or another `window.solana` wallet and sign the login challenge.
 2. Attach a mobile number to that existing wallet with OTP verification.
-3. Or start phone-first with OTP login and let the backend create a custodial Solana wallet.
-4. Create a Solana Pay payment request.
-5. Scan or open the payment link.
-6. Verify the payment on the backend.
-7. A real-time notification appears in the demo.
+3. Or start phone-first with OTP login and let the backend create one custodial Solana wallet for that phone.
+4. If that phone later attaches another signed Solana wallet, the dashboard shows both wallets: the mobile-created wallet and the attached wallet.
+5. Create a Solana Pay payment request.
+6. Scan or open the payment link.
+7. Verify the payment on the backend.
+8. A real-time notification appears in the demo.
 
 ## Business Model
 

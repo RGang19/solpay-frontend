@@ -4,6 +4,15 @@ export type InfraUser = {
   phone: string;
   wallet_address: string;
   is_merchant: boolean;
+  wallets?: InfraWallet[];
+};
+
+export type InfraWallet = {
+  address: string;
+  type: 'mobile_created' | 'attached' | 'primary' | string;
+  label: string;
+  source?: string;
+  isPrimary: boolean;
 };
 
 export type NotificationItem = {
@@ -95,7 +104,7 @@ export const infraClient = {
   },
 
   attachPhoneToWallet(token: string, phone: string, otp: string) {
-    return request<{ user: InfraUser; message: string }>('/api/auth/phone/attach', {
+    return request<{ user: InfraUser; message: string; token?: string; expiresAt?: string }>('/api/auth/phone/attach', {
       method: 'POST',
       token,
       body: { phone, otp },

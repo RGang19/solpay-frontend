@@ -10,6 +10,15 @@ export type InfraUser = {
   phone: string;
   wallet_address: string;
   is_merchant: boolean;
+  wallets?: InfraWallet[];
+};
+
+export type InfraWallet = {
+  address: string;
+  type: 'mobile_created' | 'attached' | 'primary' | string;
+  label: string;
+  source?: string;
+  isPrimary: boolean;
 };
 
 export type NotificationItem = {
@@ -111,7 +120,7 @@ export class SolanaAppInfraClient {
       return session;
     },
     attachPhoneToWallet: (phone: string, otp: string) =>
-      this.request<{ user: InfraUser; message: string }>('/api/auth/phone/attach', {
+      this.request<{ user: InfraUser; message: string; token?: string; expiresAt?: string }>('/api/auth/phone/attach', {
         method: 'POST',
         body: { phone, otp },
       }),

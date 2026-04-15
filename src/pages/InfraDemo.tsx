@@ -134,8 +134,17 @@ const InfraDemo = () => {
     setIsBusy(true);
     try {
       const response = await infraClient.attachPhoneToWallet(token, phone.trim(), otp.trim());
+      if (response.token) {
+        localStorage.setItem('infraToken', response.token);
+        setToken(response.token);
+      }
       setUser(response.user);
-      toast({ title: 'Phone attached', description: `${phone.trim()} is now linked to this wallet.` });
+      toast({
+        title: 'Phone attached',
+        description: response.user.wallets && response.user.wallets.length > 1
+          ? 'This phone now shows the mobile-created wallet and the attached Solana wallet.'
+          : `${phone.trim()} is now linked to this wallet.`,
+      });
     } catch (error) {
       toast({
         title: 'Could not attach phone',
@@ -264,6 +273,19 @@ const InfraDemo = () => {
             <div className="mt-4 space-y-2 rounded-md bg-white/5 p-3 text-sm text-zinc-200">
               <p>User ID: {user.id}</p>
               <p>Phone: {user.phone.startsWith('wallet:') ? 'Not attached yet' : user.phone}</p>
+              <div className="space-y-2 pt-2">
+                {(user.wallets || [{ address: user.wallet_address, label: 'Primary wallet', isPrimary: true, type: 'primary' }]).map((wallet) => (
+                  <div key={wallet.address} className="rounded-md border border-white/10 bg-black/30 p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-zinc-300">{wallet.label}</span>
+                      <span className="rounded-md bg-white/10 px-2 py-1 text-xs text-zinc-300">
+                        {wallet.isPrimary ? 'Primary' : 'Attached'}
+                      </span>
+                    </div>
+                    <p className="mt-1 break-all text-xs text-zinc-400">{wallet.address}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </Panel>
