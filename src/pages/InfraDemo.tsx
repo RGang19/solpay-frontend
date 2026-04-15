@@ -13,10 +13,13 @@ const sdkSnippet = `import { SolanaAppInfraClient } from '@solana-app-infra/sdk'
 
 const infra = new SolanaAppInfraClient({ apiUrl: 'https://api.yourapp.com' });
 
-const session = await infra.auth.loginWithWallet(window.solana);
-infra.setToken(session.token);
+const walletSession = await infra.auth.loginWithWallet(window.solana);
+infra.setToken(walletSession.token);
 
 await infra.auth.sendPhoneOtp('+15551234567');
+const mobileSession = await infra.auth.loginWithPhone('+15551234567', '123456');
+infra.setToken(mobileSession.token);
+
 await infra.auth.attachPhoneToWallet('+15551234567', '123456');
 await infra.auth.detachWallet('attached-wallet-address');
 
@@ -123,8 +126,8 @@ const InfraDemo = () => {
       setToken(session.token);
       setUser(session.user);
       toast({
-        title: 'Phone account ready',
-        description: `Wallet created: ${shortAddress(session.user.wallet_address)}`,
+        title: 'Mobile login successful',
+        description: `Primary wallet: ${shortAddress(session.user.wallet_address)}`,
       });
     } catch (error) {
       toast({
@@ -316,8 +319,11 @@ const InfraDemo = () => {
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
                 <Button onClick={login} disabled={isBusy} className="rounded-md bg-emerald-400 text-black hover:bg-emerald-300">
-                  <Wallet className="mr-2 h-4 w-4" /> {user ? 'Reconnect wallet' : 'Sign in with wallet'}
+                  <Wallet className="mr-2 h-4 w-4" /> Login with wallet
                 </Button>
+                <a href="#auth" className="rounded-md bg-white px-4 py-2 text-sm font-medium text-black hover:bg-zinc-200">
+                  Login with mobile number
+                </a>
                 <a href="#docs" className="rounded-md border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10">
                   View integration docs
                 </a>
@@ -343,23 +349,40 @@ const InfraDemo = () => {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-7xl gap-5 px-6 py-8 lg:grid-cols-3">
+      <section id="auth" className="mx-auto grid max-w-7xl gap-5 px-6 py-8 lg:grid-cols-3">
         <Panel title="Authentication" icon={KeyRound}>
           <p className="text-sm text-zinc-300">
-            Wallet users can attach a phone number after OTP verification. Phone-first users can create an account and custodial Solana wallet from OTP login.
+            Choose wallet login or mobile-number login. Mobile login creates a custodial Solana wallet the first time and reuses it on every later login.
           </p>
           <div className="mt-4 space-y-3">
-            <Input value={phone} onChange={(event) => setPhone(event.target.value)} className="rounded-md bg-white/10" placeholder="Mobile number" />
-            <Input value={otp} onChange={(event) => setOtp(event.target.value)} className="rounded-md bg-white/10" placeholder="OTP, demo is 123456" />
-            <div className="grid gap-2 sm:grid-cols-3">
-              <Button onClick={sendOtp} disabled={isBusy || !phone.trim()} className="rounded-md bg-white text-black hover:bg-zinc-200">
-                Send OTP
+            <div className="rounded-md border border-white/10 bg-white/5 p-3">
+              <p className="text-sm font-medium text-white">Login with wallet</p>
+              <p className="mt-1 text-xs text-zinc-400">Connect a Solana wallet and sign a message. No transaction is sent.</p>
+              <Button onClick={login} disabled={isBusy} className="mt-3 w-full rounded-md bg-emerald-400 text-black hover:bg-emerald-300">
+                <Wallet className="mr-2 h-4 w-4" /> Login with wallet
               </Button>
-              <Button onClick={continueWithPhone} disabled={isBusy || !phone.trim() || !otp.trim()} className="rounded-md border border-white/20 bg-transparent hover:bg-white/10">
-                Create with phone
-              </Button>
-              <Button onClick={attachPhone} disabled={isBusy || !user || !phone.trim() || !otp.trim()} className="rounded-md bg-emerald-400 text-black hover:bg-emerald-300">
-                Attach to wallet
+            </div>
+            <div className="rounded-md border border-white/10 bg-white/5 p-3">
+              <p className="text-sm font-medium text-white">Login with mobile number</p>
+              <p className="mt-1 text-xs text-zinc-400">Use OTP login. New mobile numbers get one primary mobile-created wallet.</p>
+              <div className="mt-3 space-y-3">
+                <Input value={phone} onChange={(event) => setPhone(event.target.value)} className="rounded-md bg-white/10" placeholder="Mobile number" />
+                <Input value={otp} onChange={(event) => setOtp(event.target.value)} className="rounded-md bg-white/10" placeholder="OTP, demo is 123456" />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button onClick={sendOtp} disabled={isBusy || !phone.trim()} className="rounded-md bg-white text-black hover:bg-zinc-200">
+                    Send OTP
+                  </Button>
+                  <Button onClick={continueWithPhone} disabled={isBusy || !phone.trim() || !otp.trim()} className="rounded-md bg-emerald-400 text-black hover:bg-emerald-300">
+                    Login with mobile
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-md border border-white/10 bg-white/5 p-3">
+              <p className="text-sm font-medium text-white">Attach wallet to mobile account</p>
+              <p className="mt-1 text-xs text-zinc-400">After wallet login, verify a mobile number to keep both wallets under the same account.</p>
+              <Button onClick={attachPhone} disabled={isBusy || !user || !phone.trim() || !otp.trim()} className="mt-3 w-full rounded-md border border-white/20 bg-transparent hover:bg-white/10">
+                Attach current wallet
               </Button>
             </div>
           </div>

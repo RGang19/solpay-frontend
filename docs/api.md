@@ -32,7 +32,7 @@ Sends a phone OTP. The demo backend uses `123456`.
 
 `POST /api/auth/verify-otp`
 
-Logs in an existing phone user, or creates a new account with a custodial Solana wallet if the phone is new.
+Logs in with a mobile number after OTP verification. Existing phone users get their same wallet list; new phone numbers get one custodial Solana wallet.
 
 ```json
 { "phone": "+15551234567", "otp": "123456" }
