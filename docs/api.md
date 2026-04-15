@@ -80,6 +80,18 @@ Streams notification events.
 
 ## Payments
 
+`POST /api/payments/send`
+
+Sends money from the user's mobile-created custodial wallet to a registered phone number or a direct Solana wallet address.
+
+```json
+{
+  "phone": "+15551234567",
+  "amount": 0.01,
+  "token": "SOL"
+}
+```
+
 `POST /api/infra/payments`
 
 Creates a Solana Pay request with a unique reference.

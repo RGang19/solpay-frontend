@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Bell, CheckCircle2, Code2, CreditCard, KeyRound, Radio, Wallet } from 'lucide-react';
+import { Bell, CheckCircle2, Code2, Copy, CreditCard, KeyRound, Radio, Send, Wallet } from 'lucide-react';
 import { infraClient, type InfraPayment, type InfraUser, type NotificationItem } from '@/lib/infraClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 
 const shortAddress = (value: string) => `${value.slice(0, 4)}...${value.slice(-4)}`;
+const formatSol = (value?: number) => `${(value || 0).toLocaleString('en-US', { maximumFractionDigits: 6 })} SOL`;
 
 const sdkSnippet = `import { SolanaAppInfraClient } from '@solana-app-infra/sdk';
 
@@ -19,6 +20,7 @@ await infra.auth.sendPhoneOtp('+15551234567');
 await infra.auth.attachPhoneToWallet('+15551234567', '123456');
 
 const payment = await infra.payments.createPayment({ amount: 0.05 });
+await infra.payments.sendMoney({ phone: '+15559876543', amount: 0.01 });
 
 infra.notifications.subscribeNotifications((event) => {
   console.log(event.type, event.payload);
@@ -44,6 +46,10 @@ const InfraDemo = () => {
   const [recipient, setRecipient] = useState('');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
+  const [sendRecipient, setSendRecipient] = useState('');
+  const [sendAmount, setSendAmount] = useState('0.001');
+  const [requestAmount, setRequestAmount] = useState('0.01');
+  const [copiedWallet, setCopiedWallet] = useState('');
   const [isBusy, setIsBusy] = useState(false);
 
   const unreadCount = useMemo(() => notifications.filter((item) => !item.read).length, [notifications]);
@@ -179,6 +185,60 @@ const InfraDemo = () => {
     }
   };
 
+  const createPaymentRequest = async () => {
+    if (!token) return;
+    setAmount(requestAmount);
+    setIsBusy(true);
+    try {
+      const response = await infraClient.createPayment(token, {
+        amount: Number(requestAmount),
+        recipientAddress: recipient || undefined,
+        label: 'Mobile wallet payment request',
+        message: `Request from ${user?.phone?.startsWith('wallet:') ? 'Solana wallet' : user?.phone || 'Solana App Infra'}`,
+      });
+      setPayment(response.payment);
+      toast({ title: 'Payment request ready', description: 'Share the QR or Solana Pay link to receive money.' });
+    } catch (error) {
+      toast({
+        title: 'Payment request failed',
+        description: error instanceof Error ? error.message : 'Try again',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const sendMoney = async () => {
+    if (!token || !sendRecipient.trim()) return;
+    setIsBusy(true);
+    try {
+      const response = await infraClient.sendMoney(token, {
+        phone: sendRecipient.trim(),
+        amount: Number(sendAmount),
+        token: 'SOL',
+      });
+      toast({ title: 'Money sent', description: `Transaction ${shortAddress(response.transaction.tx_hash)}` });
+      const currentUser = await infraClient.getCurrentUser(token);
+      setUser(currentUser);
+    } catch (error) {
+      toast({
+        title: 'Send failed',
+        description: error instanceof Error ? error.message : 'The primary mobile-created wallet needs Devnet SOL.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const copyWallet = async (address: string) => {
+    await navigator.clipboard.writeText(address);
+    setCopiedWallet(address);
+    setTimeout(() => setCopiedWallet(''), 1600);
+    toast({ title: 'Wallet copied', description: 'Full wallet address copied.' });
+  };
+
   const verifyPayment = async () => {
     if (!token || !payment) return;
     setIsBusy(true);
@@ -278,11 +338,21 @@ const InfraDemo = () => {
                   <div key={wallet.address} className="rounded-md border border-white/10 bg-black/30 p-2">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-zinc-300">{wallet.label}</span>
-                      <span className="rounded-md bg-white/10 px-2 py-1 text-xs text-zinc-300">
-                        {wallet.isPrimary ? 'Primary' : 'Attached'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-md bg-emerald-400/10 px-2 py-1 text-xs text-emerald-200">{formatSol(wallet.balance)}</span>
+                        <span className="rounded-md bg-white/10 px-2 py-1 text-xs text-zinc-300">
+                          {wallet.isPrimary ? 'Primary' : 'Attached'}
+                        </span>
+                      </div>
                     </div>
-                    <p className="mt-1 break-all text-xs text-zinc-400">{wallet.address}</p>
+                    <button onClick={() => copyWallet(wallet.address)} className="mt-2 flex w-full items-start justify-between gap-2 rounded-md bg-white/5 p-2 text-left hover:bg-white/10">
+                      <span className="break-all text-xs text-zinc-300">{wallet.address}</span>
+                      <Copy className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
+                    </button>
+                    <p className="mt-2 text-xs text-zinc-500">
+                      {wallet.canSend ? 'Can send and receive through mobile number.' : 'Can receive and show balance here. Sign this wallet directly to spend from it.'}
+                      {copiedWallet === wallet.address ? ' Copied.' : ''}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -325,6 +395,43 @@ const InfraDemo = () => {
               <Button onClick={verifyPayment} disabled={isBusy} className="w-full rounded-md border border-white/20 bg-transparent hover:bg-white/10">
                 <CheckCircle2 className="mr-2 h-4 w-4" /> Verify payment
               </Button>
+            </div>
+          )}
+        </Panel>
+      </section>
+
+      <section className="mx-auto grid max-w-7xl gap-5 px-6 pb-10 lg:grid-cols-2">
+        <Panel title="Send By Mobile" icon={Send}>
+          <p className="mb-4 text-sm text-zinc-300">
+            Send SOL from the mobile-created primary wallet to another registered mobile number or a direct Solana address.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-[1fr_8rem]">
+            <Input value={sendRecipient} onChange={(event) => setSendRecipient(event.target.value)} className="rounded-md bg-white/10" placeholder="Mobile number or wallet address" />
+            <Input value={sendAmount} onChange={(event) => setSendAmount(event.target.value)} className="rounded-md bg-white/10" placeholder="SOL" />
+          </div>
+          <Button onClick={sendMoney} disabled={!user || !sendRecipient.trim() || Number(sendAmount) <= 0 || isBusy} className="mt-3 w-full rounded-md bg-emerald-400 text-black hover:bg-emerald-300">
+            Send money
+          </Button>
+        </Panel>
+
+        <Panel title="Receive And Request" icon={Wallet}>
+          <p className="mb-4 text-sm text-zinc-300">
+            Receive by sharing your mobile number, copying a wallet address, or creating a Solana Pay request.
+          </p>
+          <div className="rounded-md border border-white/10 bg-white/5 p-3 text-sm">
+            <p className="text-zinc-400">Mobile receive handle</p>
+            <p className="mt-1 break-all text-zinc-100">{user?.phone && !user.phone.startsWith('wallet:') ? user.phone : 'Attach a mobile number to receive by phone.'}</p>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_10rem]">
+            <Input value={requestAmount} onChange={(event) => setRequestAmount(event.target.value)} className="rounded-md bg-white/10" placeholder="Request amount" />
+            <Button onClick={createPaymentRequest} disabled={!user || Number(requestAmount) <= 0 || isBusy} className="rounded-md bg-white text-black hover:bg-zinc-200">
+              Request payment
+            </Button>
+          </div>
+          {payment && (
+            <div className="mt-4 rounded-md border border-white/10 bg-black/30 p-3">
+              <p className="text-sm text-zinc-300">Shareable payment request</p>
+              <p className="mt-1 break-all text-xs text-emerald-200">{payment.checkout_url}</p>
             </div>
           )}
         </Panel>

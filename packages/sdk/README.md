@@ -21,6 +21,12 @@ const payment = await infra.payments.createPayment({
   label: 'Demo checkout',
 });
 
+await infra.payments.sendMoney({
+  phone: '+15559876543',
+  amount: 0.01,
+  token: 'SOL',
+});
+
 infra.notifications.subscribeNotifications((event) => {
   console.log(event.type, event.payload);
 });

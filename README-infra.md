@@ -42,6 +42,7 @@ SDK modules:
 - `notifications.subscribeNotifications()`
 - `notifications.getNotifications()`
 - `payments.createPayment()`
+- `payments.sendMoney()`
 - `payments.verifyPayment()`
 - `payments.getPaymentStatus()`
 
@@ -72,10 +73,12 @@ Open `http://localhost:8080`.
 2. Attach a mobile number to that existing wallet with OTP verification.
 3. Or start phone-first with OTP login and let the backend create one custodial Solana wallet for that phone.
 4. If that phone later attaches another signed Solana wallet, the dashboard shows both wallets: the mobile-created wallet and the attached wallet.
-5. Create a Solana Pay payment request.
-6. Scan or open the payment link.
-7. Verify the payment on the backend.
-8. A real-time notification appears in the demo.
+5. Copy full wallet addresses and view SOL balances for the primary and attached wallets.
+6. Send money by mobile number or direct wallet address from the mobile-created wallet.
+7. Create a Solana Pay payment request to receive funds.
+8. Scan or open the payment link.
+9. Verify the payment on the backend.
+10. A real-time notification appears in the demo.
 
 ## Business Model
 

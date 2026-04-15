@@ -18,6 +18,10 @@ export type InfraWallet = {
   type: 'mobile_created' | 'attached' | 'primary' | string;
   label: string;
   source?: string;
+  balance?: number;
+  token?: string;
+  canSend?: boolean;
+  canReceive?: boolean;
   isPrimary: boolean;
 };
 
@@ -164,6 +168,11 @@ export class SolanaAppInfraClient {
       memo?: string;
     }) =>
       this.request<{ payment: InfraPayment }>('/api/infra/payments', {
+        method: 'POST',
+        body: payload,
+      }),
+    sendMoney: (payload: { phone: string; amount: number; token?: 'SOL' | 'USDC' }) =>
+      this.request<{ message: string; transaction: { id: string; tx_hash: string; amount: number; status: string } }>('/api/payments/send', {
         method: 'POST',
         body: payload,
       }),

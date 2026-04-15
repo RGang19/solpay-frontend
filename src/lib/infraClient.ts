@@ -12,6 +12,10 @@ export type InfraWallet = {
   type: 'mobile_created' | 'attached' | 'primary' | string;
   label: string;
   source?: string;
+  balance?: number;
+  token?: string;
+  canSend?: boolean;
+  canReceive?: boolean;
   isPrimary: boolean;
 };
 
@@ -140,6 +144,14 @@ export const infraClient = {
 
   createPayment(token: string, payload: { amount: number; recipientAddress?: string; label?: string; message?: string }) {
     return request<{ payment: InfraPayment }>('/api/infra/payments', {
+      method: 'POST',
+      token,
+      body: payload,
+    });
+  },
+
+  sendMoney(token: string, payload: { phone: string; amount: number; token?: 'SOL' | 'USDC' }) {
+    return request<{ message: string; transaction: { id: string; tx_hash: string; amount: number; status: string } }>('/api/payments/send', {
       method: 'POST',
       token,
       body: payload,
