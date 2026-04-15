@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Bell, CheckCircle2, Code2, Copy, CreditCard, KeyRound, Radio, Send, Wallet } from 'lucide-react';
+import { Bell, CheckCircle2, Code2, Copy, CreditCard, KeyRound, LogOut, Radio, Send, Unlink, Wallet } from 'lucide-react';
 import { infraClient, type InfraPayment, type InfraUser, type NotificationItem } from '@/lib/infraClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,7 @@ infra.setToken(session.token);
 
 await infra.auth.sendPhoneOtp('+15551234567');
 await infra.auth.attachPhoneToWallet('+15551234567', '123456');
+await infra.auth.detachWallet('attached-wallet-address');
 
 const payment = await infra.payments.createPayment({ amount: 0.05 });
 await infra.payments.sendMoney({ phone: '+15559876543', amount: 0.01 });
@@ -31,6 +32,7 @@ POST /api/auth/wallet/verify
 POST /api/auth/send-otp
 POST /api/auth/verify-otp
 POST /api/auth/phone/attach
+POST /api/auth/wallet/detach
 GET  /api/notifications
 POST /api/infra/payments
 POST /api/infra/payments/:id/verify
@@ -239,6 +241,33 @@ const InfraDemo = () => {
     toast({ title: 'Wallet copied', description: 'Full wallet address copied.' });
   };
 
+  const logout = () => {
+    localStorage.removeItem('infraToken');
+    setToken('');
+    setUser(null);
+    setNotifications([]);
+    setPayment(null);
+    toast({ title: 'Logged out', description: 'Your local demo session was cleared.' });
+  };
+
+  const detachWallet = async (walletAddress: string) => {
+    if (!token) return;
+    setIsBusy(true);
+    try {
+      const response = await infraClient.detachWallet(token, walletAddress);
+      setUser(response.user);
+      toast({ title: 'Wallet detached', description: 'The external wallet was removed from this phone account.' });
+    } catch (error) {
+      toast({
+        title: 'Detach failed',
+        description: error instanceof Error ? error.message : 'Primary mobile wallet cannot be detached.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
   const verifyPayment = async () => {
     if (!token || !payment) return;
     setIsBusy(true);
@@ -304,6 +333,11 @@ const InfraDemo = () => {
                 <StatusRow icon={Bell} label="Notifications" value={`${notifications.length} total, ${unreadCount} unread`} />
                 <StatusRow icon={CreditCard} label="Payments" value={payment ? payment.status : 'No payment request'} />
               </div>
+              {token && (
+                <Button onClick={logout} className="mt-4 w-full rounded-md border border-white/20 bg-transparent hover:bg-white/10">
+                  <LogOut className="mr-2 h-4 w-4" /> Logout
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -353,6 +387,20 @@ const InfraDemo = () => {
                       {wallet.canSend ? 'Can send and receive through mobile number.' : 'Can receive and show balance here. Sign this wallet directly to spend from it.'}
                       {copiedWallet === wallet.address ? ' Copied.' : ''}
                     </p>
+                    {!wallet.isPrimary && (
+                      <Button
+                        onClick={() => detachWallet(wallet.address)}
+                        disabled={isBusy}
+                        className="mt-3 w-full rounded-md border border-red-300/30 bg-red-400/10 text-red-100 hover:bg-red-400/20"
+                      >
+                        <Unlink className="mr-2 h-4 w-4" /> Detach external wallet
+                      </Button>
+                    )}
+                    {wallet.isPrimary && (
+                      <p className="mt-3 rounded-md bg-emerald-400/10 p-2 text-xs text-emerald-100">
+                        Primary mobile-created wallet stays attached to this phone number.
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>

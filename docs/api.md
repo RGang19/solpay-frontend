@@ -47,6 +47,14 @@ If the phone already owns a mobile-created wallet, the signed wallet is added as
 { "phone": "+15551234567", "otp": "123456" }
 ```
 
+`POST /api/auth/wallet/detach`
+
+Detaches an external linked wallet from the authenticated phone account. The primary mobile-created wallet cannot be detached.
+
+```json
+{ "walletAddress": "..." }
+```
+
 ## Notifications
 
 `GET /api/notifications`

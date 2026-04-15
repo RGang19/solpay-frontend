@@ -115,6 +115,14 @@ export const infraClient = {
     });
   },
 
+  detachWallet(token: string, walletAddress: string) {
+    return request<{ user: InfraUser; message: string }>('/api/auth/wallet/detach', {
+      method: 'POST',
+      token,
+      body: { walletAddress },
+    });
+  },
+
   async getCurrentUser(token: string) {
     const response = await request<{ user: InfraUser }>('/api/auth/session/me', { token });
     return response.user;

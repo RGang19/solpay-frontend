@@ -16,6 +16,8 @@ await infra.auth.sendPhoneOtp('+15551234567');
 const linked = await infra.auth.attachPhoneToWallet('+15551234567', '123456');
 console.log(linked.user.wallets); // mobile-created wallet plus any attached wallets
 
+await infra.auth.detachWallet('attached-wallet-address');
+
 const payment = await infra.payments.createPayment({
   amount: 0.05,
   label: 'Demo checkout',

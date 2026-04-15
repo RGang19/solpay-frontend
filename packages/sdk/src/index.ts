@@ -128,6 +128,11 @@ export class SolanaAppInfraClient {
         method: 'POST',
         body: { phone, otp },
       }),
+    detachWallet: (walletAddress: string) =>
+      this.request<{ user: InfraUser; message: string }>('/api/auth/wallet/detach', {
+        method: 'POST',
+        body: { walletAddress },
+      }),
     verifySession: () => this.request<{ user: InfraUser }>('/api/auth/session/me'),
     getCurrentUser: async () => {
       const response = await this.request<{ user: InfraUser }>('/api/auth/session/me');
