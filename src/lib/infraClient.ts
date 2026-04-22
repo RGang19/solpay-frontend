@@ -143,7 +143,7 @@ const request = async <T>(path: string, options: { method?: string; body?: unkno
 
 export const infraClient = {
   sendPhoneOtp(phone: string) {
-    return request<{ message: string }>('/api/auth/send-otp', {
+    return request<{ message: string; otp: string }>('/api/auth/send-otp', {
       method: 'POST',
       body: { phone },
     });

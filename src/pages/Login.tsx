@@ -54,10 +54,14 @@ const Login = () => {
         throw new Error(data.error || 'Failed to send OTP');
       }
 
+      if (data.otp) {
+        setOtp(data.otp);
+      }
+
       setStage('otp');
       toast({
         title: 'OTP sent',
-        description: 'Use 123456 for the current mock backend login flow.',
+        description: `Your OTP is: ${data.otp}`,
       });
     } catch (error) {
       toast({

@@ -112,8 +112,11 @@ const InfraDemo = () => {
     if (!phone.trim()) return;
     setIsBusy(true);
     try {
-      await infraClient.sendPhoneOtp(phone.trim());
-      toast({ title: 'OTP sent', description: 'Use 123456 for the demo OTP backend.' });
+      const response = await infraClient.sendPhoneOtp(phone.trim());
+      if (response.otp) {
+        setOtp(response.otp);
+      }
+      toast({ title: 'OTP sent', description: `Your OTP is: ${response.otp}` });
     } catch (error) {
       toast({
         title: 'Could not send OTP',
