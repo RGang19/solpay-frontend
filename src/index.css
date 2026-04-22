@@ -74,12 +74,12 @@
 
 @layer components {
   .glass-card {
-    @apply bg-card/60 backdrop-blur-xl border border-border/50 rounded-2xl;
+    @apply bg-black/30 backdrop-blur-2xl border border-white/10 rounded-2xl;
     box-shadow: var(--shadow-card);
   }
 
   .glass-card-glow {
-    @apply glass-card;
+    @apply glass-card bg-black/40 border-white/20;
     box-shadow: var(--shadow-neon), var(--shadow-card);
   }
 

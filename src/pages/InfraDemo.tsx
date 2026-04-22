@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useCallback, useState, type ReactNode } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, CheckCircle2, ChevronDown, Code2, Copy, CreditCard, KeyRound, Link, LogOut, Phone, Plus, QrCode, Radio, ScanLine, Send, Shield, Star, Unlink, Wallet } from 'lucide-react';
 import { infraClient, getAvailableProviders, WALLET_PROVIDERS, type InfraPayment, type InfraUser, type InfraWallet, type NotificationItem } from '@/lib/infraClient';
+import { ThreeBackground } from '@/components/ThreeBackground';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
@@ -62,7 +64,7 @@ const InfraDemo = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState('');
   const qrScannerRef = useRef<HTMLDivElement>(null);
-  const html5QrCodeRef = useRef<any>(null);
+  const html5QrCodeRef = useRef<unknown>(null);
   const [showAttachWallet, setShowAttachWallet] = useState(false);
 
   const unreadCount = useMemo(() => notifications.filter((item) => !item.read).length, [notifications]);
@@ -246,9 +248,13 @@ const InfraDemo = () => {
   const stopScanner = useCallback(async () => {
     if (html5QrCodeRef.current) {
       try {
+        // @ts-expect-error - no strict typings available for html5-qrcode instance
         await html5QrCodeRef.current.stop();
+        // @ts-expect-error - no strict typings available for html5-qrcode instance
         html5QrCodeRef.current.clear();
-      } catch {}
+      } catch {
+        // Safe to ignore if scanner is already stopped
+      }
       html5QrCodeRef.current = null;
     }
     setIsScanning(false);
@@ -426,11 +432,18 @@ const InfraDemo = () => {
   };
 
   return (
-    <main className="min-h-screen bg-[#0b0d0e] text-white">
-      <section className="border-b border-white/10 bg-[url('https://images.unsplash.com/photo-1639762681057-408e52192e55?auto=format&fit=crop&w=1800&q=80')] bg-cover bg-center">
-        <div className="bg-black/75">
-          <div className="mx-auto grid min-h-[68vh] max-w-7xl gap-10 px-6 py-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-            <div className="text-left">
+    <>
+      <ThreeBackground />
+      <main className="min-h-screen text-white relative z-10 pt-10 pb-20">
+        <section className="w-full mb-10">
+          <div>
+            <div className="mx-auto grid min-h-[50vh] max-w-7xl gap-10 px-6 py-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6 }}
+                className="text-left"
+              >
               <p className="mb-4 inline-flex items-center gap-2 rounded-md border border-emerald-300/40 bg-emerald-300/10 px-3 py-1 text-sm text-emerald-100">
                 <Radio size={16} /> Solana developer infrastructure
               </p>
@@ -464,9 +477,20 @@ const InfraDemo = () => {
                   </>
                 )}
               </div>
-            </div>
-            <div className="rounded-md border border-white/15 bg-black/60 p-5 text-left shadow-2xl">
-              <div className="mb-4 flex items-center justify-between">
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+            >
+              <div className="rounded-2xl border border-white/10 glass-card p-6 shadow-2xl relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-tr from-purple-500/10 to-transparent pointer-events-none" />
+                <h2 className="mb-4 text-xl font-semibold relative flex items-center justify-between">
+                  {user ? 'Web3 Account Context' : 'Client-side Setup'} 
+                  {isBusy && <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />}
+                </h2>
+                <div className="rounded-md border border-white/15 bg-black/40 p-5 text-left shadow-2xl relative z-10 backdrop-blur-md">
+                  <div className="mb-4 flex items-center justify-between">
                 <span className="text-sm text-zinc-300">Demo session</span>
                 <span className="rounded-md bg-emerald-400/15 px-2 py-1 text-xs text-emerald-200">{token ? 'connected' : 'not connected'}</span>
               </div>
@@ -482,8 +506,10 @@ const InfraDemo = () => {
               )}
             </div>
           </div>
-        </div>
-      </section>
+        </motion.div>
+      </div>
+    </div>
+  </section>
 
       <section id="auth" className="mx-auto grid max-w-7xl gap-5 px-6 py-8 lg:grid-cols-3">
         <Panel title="Authentication" icon={KeyRound}>
@@ -922,9 +948,11 @@ const InfraDemo = () => {
 
       <section id="docs" className="border-t border-white/10 bg-zinc-950 px-6 py-10 text-left">
         <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-2">
-          <Panel title="SDK Usage" icon={Code2}>
-            <pre className="overflow-auto rounded-md bg-black p-4 text-sm text-zinc-200"><code>{sdkSnippet}</code></pre>
-          </Panel>
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} className="glass-card">
+            <Panel title="SDK Usage" icon={Code2}>
+              <pre className="overflow-auto rounded-md bg-black p-4 text-sm text-zinc-200"><code>{sdkSnippet}</code></pre>
+            </Panel>
+          </motion.div>
           <Panel title="API Surface" icon={Radio}>
             <pre className="overflow-auto rounded-md bg-black p-4 text-sm text-zinc-200"><code>{apiSnippet}</code></pre>
             <p className="mt-4 text-sm text-zinc-300">The demo is a consumer of the same backend APIs and package shape intended for third-party Solana apps.</p>
@@ -932,11 +960,12 @@ const InfraDemo = () => {
         </div>
       </section>
     </main>
+    </>
   );
 };
 
 const Panel = ({ title, icon: Icon, children }: { title: string; icon: typeof KeyRound; children: ReactNode }) => (
-  <div className="rounded-md border border-white/10 bg-[#121619] p-5 text-left shadow-xl">
+  <div className="rounded-md border border-white/10 bg-white/5 p-5 text-left shadow-xl backdrop-blur-sm">
     <div className="mb-4 flex items-center gap-3">
       <span className="rounded-md bg-emerald-400/15 p-2 text-emerald-200"><Icon size={18} /></span>
       <h2 className="text-xl font-semibold">{title}</h2>
