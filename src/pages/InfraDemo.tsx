@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useCallback, useState, type ReactNode } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Bell, CheckCircle2, Code2, Copy, CreditCard, KeyRound, LogOut, Radio, Send, Unlink, Wallet } from 'lucide-react';
-import { infraClient, type InfraPayment, type InfraUser, type NotificationItem } from '@/lib/infraClient';
+import { Bell, CheckCircle2, ChevronDown, Code2, Copy, CreditCard, KeyRound, Link, LogOut, Phone, Plus, QrCode, Radio, ScanLine, Send, Shield, Unlink, Wallet } from 'lucide-react';
+import { infraClient, getAvailableProviders, WALLET_PROVIDERS, type InfraPayment, type InfraUser, type InfraWallet, type NotificationItem } from '@/lib/infraClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
@@ -56,6 +56,14 @@ const InfraDemo = () => {
   const [requestAmount, setRequestAmount] = useState('0.01');
   const [copiedWallet, setCopiedWallet] = useState('');
   const [isBusy, setIsBusy] = useState(false);
+  const [sendMode, setSendMode] = useState<'phone' | 'wallet' | 'qr'>('phone');
+  const [selectedFromWallet, setSelectedFromWallet] = useState<string>('');
+  const [showWalletSelector, setShowWalletSelector] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanResult, setScanResult] = useState('');
+  const qrScannerRef = useRef<HTMLDivElement>(null);
+  const html5QrCodeRef = useRef<any>(null);
+  const [showAttachWallet, setShowAttachWallet] = useState(false);
 
   const unreadCount = useMemo(() => notifications.filter((item) => !item.read).length, [notifications]);
 
@@ -214,6 +222,71 @@ const InfraDemo = () => {
     }
   };
 
+  const userWallets: InfraWallet[] = useMemo(() => {
+    if (!user) return [];
+    return user.wallets || [{ address: user.wallet_address, label: 'Primary wallet', isPrimary: true, type: 'primary', canSend: true }];
+  }, [user]);
+
+  // Auto-select primary wallet when user loads
+  useEffect(() => {
+    if (userWallets.length > 0 && !selectedFromWallet) {
+      const primary = userWallets.find((w) => w.isPrimary);
+      setSelectedFromWallet(primary?.address || userWallets[0].address);
+    }
+  }, [userWallets, selectedFromWallet]);
+
+  const selectedWalletInfo = useMemo(
+    () => userWallets.find((w) => w.address === selectedFromWallet) || userWallets[0],
+    [userWallets, selectedFromWallet],
+  );
+
+  const stopScanner = useCallback(async () => {
+    if (html5QrCodeRef.current) {
+      try {
+        await html5QrCodeRef.current.stop();
+        html5QrCodeRef.current.clear();
+      } catch {}
+      html5QrCodeRef.current = null;
+    }
+    setIsScanning(false);
+  }, []);
+
+  const startScanner = useCallback(async () => {
+    if (!qrScannerRef.current) return;
+    setIsScanning(true);
+    setScanResult('');
+    try {
+      const { Html5Qrcode } = await import('html5-qrcode');
+      const scanner = new Html5Qrcode('qr-reader-send');
+      html5QrCodeRef.current = scanner;
+      await scanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 220, height: 220 } },
+        (decodedText: string) => {
+          // Extract wallet address from Solana Pay URL or use raw text
+          let address = decodedText;
+          if (decodedText.startsWith('solana:')) {
+            address = decodedText.replace('solana:', '').split('?')[0];
+          }
+          setSendRecipient(address);
+          setScanResult(address);
+          void scanner.stop().then(() => scanner.clear()).catch(() => {});
+          html5QrCodeRef.current = null;
+          setIsScanning(false);
+          setSendMode('wallet');
+          toast({ title: 'QR Scanned', description: `Address: ${shortAddress(address)}` });
+        },
+        () => {},
+      );
+    } catch (err) {
+      setIsScanning(false);
+      toast({ title: 'Scanner Error', description: 'Could not access camera.', variant: 'destructive' });
+    }
+  }, [toast]);
+
+  // Clean up scanner on unmount
+  useEffect(() => () => { void stopScanner(); }, [stopScanner]);
+
   const sendMoney = async () => {
     if (!token || !sendRecipient.trim()) return;
     setIsBusy(true);
@@ -222,10 +295,13 @@ const InfraDemo = () => {
         phone: sendRecipient.trim(),
         amount: Number(sendAmount),
         token: 'SOL',
+        fromWallet: selectedFromWallet || undefined,
       });
       toast({ title: 'Money sent', description: `Transaction ${shortAddress(response.transaction.tx_hash)}` });
       const currentUser = await infraClient.getCurrentUser(token);
       setUser(currentUser);
+      setSendRecipient('');
+      setScanResult('');
     } catch (error) {
       toast({
         title: 'Send failed',
@@ -264,6 +340,28 @@ const InfraDemo = () => {
       toast({
         title: 'Detach failed',
         description: error instanceof Error ? error.message : 'Primary mobile wallet cannot be detached.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const attachWallet = async (providerKey?: string) => {
+    if (!token) return;
+    setIsBusy(true);
+    try {
+      const response = await infraClient.attachWalletBySignature(token, providerKey);
+      setUser(response.user);
+      setShowAttachWallet(false);
+      toast({
+        title: `${response.providerName} wallet attached`,
+        description: `${shortAddress(response.walletAddress)} linked to your account.`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Attach failed',
+        description: error instanceof Error ? error.message : 'Could not attach wallet.',
         variant: 'destructive',
       });
     } finally {
@@ -318,15 +416,28 @@ const InfraDemo = () => {
                 A reusable infrastructure layer for Solana apps that need onboarding, user communication, and native checkout without rebuilding the same plumbing every time.
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
-                <Button onClick={login} disabled={isBusy} className="rounded-md bg-emerald-400 text-black hover:bg-emerald-300">
-                  <Wallet className="mr-2 h-4 w-4" /> Login with wallet
-                </Button>
-                <a href="#auth" className="rounded-md bg-white px-4 py-2 text-sm font-medium text-black hover:bg-zinc-200">
-                  Login with mobile number
-                </a>
-                <a href="#docs" className="rounded-md border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10">
-                  View integration docs
-                </a>
+                {token && user ? (
+                  <>
+                    <Button onClick={logout} className="rounded-md border border-white/20 bg-transparent hover:bg-white/10">
+                      <LogOut className="mr-2 h-4 w-4" /> Logout
+                    </Button>
+                    <a href="#docs" className="rounded-md border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10">
+                      View integration docs
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    <Button onClick={login} disabled={isBusy} className="rounded-md bg-emerald-400 text-black hover:bg-emerald-300">
+                      <Wallet className="mr-2 h-4 w-4" /> Login with wallet
+                    </Button>
+                    <a href="#auth" className="rounded-md bg-white px-4 py-2 text-sm font-medium text-black hover:bg-zinc-200">
+                      Login with mobile number
+                    </a>
+                    <a href="#docs" className="rounded-md border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10">
+                      View integration docs
+                    </a>
+                  </>
+                )}
               </div>
             </div>
             <div className="rounded-md border border-white/15 bg-black/60 p-5 text-left shadow-2xl">
@@ -351,83 +462,179 @@ const InfraDemo = () => {
 
       <section id="auth" className="mx-auto grid max-w-7xl gap-5 px-6 py-8 lg:grid-cols-3">
         <Panel title="Authentication" icon={KeyRound}>
-          <p className="text-sm text-zinc-300">
-            Choose wallet login or mobile-number login. Mobile login creates a custodial Solana wallet the first time and reuses it on every later login.
-          </p>
-          <div className="mt-4 space-y-3">
-            <div className="rounded-md border border-white/10 bg-white/5 p-3">
-              <p className="text-sm font-medium text-white">Login with wallet</p>
-              <p className="mt-1 text-xs text-zinc-400">Connect a Solana wallet and sign a message. No transaction is sent.</p>
-              <Button onClick={login} disabled={isBusy} className="mt-3 w-full rounded-md bg-emerald-400 text-black hover:bg-emerald-300">
-                <Wallet className="mr-2 h-4 w-4" /> Login with wallet
-              </Button>
+          {token && user ? (
+            <div className="space-y-4">
+              {/* User info header */}
+              <div className="rounded-md bg-white/5 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Shield size={14} className="text-emerald-400" />
+                  <span className="text-sm text-emerald-200 font-medium">Authenticated</span>
+                </div>
+                <p className="text-xs text-zinc-400">User ID: <span className="text-zinc-300 font-mono">{user.id}</span></p>
+                <p className="text-xs text-zinc-400 mt-1">Phone: <span className="text-zinc-300">{user.phone.startsWith('wallet:') ? 'Not attached yet' : user.phone}</span></p>
+              </div>
+
+              {/* Wallets section */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-white flex items-center gap-2">
+                    <Wallet size={14} /> Wallets
+                  </p>
+                  <span className="text-[10px] text-zinc-500 bg-white/5 px-2 py-0.5 rounded font-mono">
+                    {(user.wallets || []).length || 1} / 10
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  {(user.wallets || [{ address: user.wallet_address, label: 'Primary wallet', isPrimary: true, type: 'primary' }]).map((wallet) => {
+                    // Detect provider name from label
+                    const providerName = (() => {
+                      const label = (wallet.label || '').toLowerCase();
+                      if (label.includes('phantom')) return { name: 'Phantom', icon: '👻' };
+                      if (label.includes('backpack')) return { name: 'Backpack', icon: '🎒' };
+                      if (label.includes('solflare')) return { name: 'Solflare', icon: '🔆' };
+                      if (label.includes('glow')) return { name: 'Glow', icon: '✨' };
+                      if (label.includes('coin98')) return { name: 'Coin98', icon: '🪙' };
+                      if (label.includes('metamask')) return { name: 'MetaMask', icon: '🦊' };
+                      if (wallet.isPrimary && wallet.type === 'mobile_created') return { name: 'Custodial', icon: '📱' };
+                      if (wallet.isPrimary) return { name: 'Primary', icon: '🔑' };
+                      return { name: 'Solana', icon: '◎' };
+                    })();
+
+                    return (
+                      <div key={wallet.address} className="rounded-md border border-white/10 bg-black/30 p-3">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-lg leading-none">{providerName.icon}</span>
+                            <div className="min-w-0">
+                              <p className="text-sm text-white font-medium truncate">{providerName.name}</p>
+                              <p className="text-[10px] text-zinc-500">{wallet.label}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="rounded bg-emerald-400/10 px-2 py-0.5 text-[10px] text-emerald-200 font-mono">{formatSol(wallet.balance)}</span>
+                            <span className={`rounded px-2 py-0.5 text-[10px] font-medium ${wallet.isPrimary ? 'bg-blue-400/15 text-blue-200' : 'bg-white/10 text-zinc-400'}`}>
+                              {wallet.isPrimary ? 'Primary' : 'Attached'}
+                            </span>
+                          </div>
+                        </div>
+                        <button onClick={() => copyWallet(wallet.address)} className="w-full flex items-center justify-between gap-2 rounded bg-white/5 p-2 text-left hover:bg-white/10 transition-colors">
+                          <span className="break-all text-[10px] text-zinc-400 font-mono">{wallet.address}</span>
+                          <Copy className="h-3 w-3 shrink-0 text-zinc-500" />
+                        </button>
+                        {copiedWallet === wallet.address && (
+                          <p className="text-[10px] text-emerald-300 mt-1">Copied to clipboard</p>
+                        )}
+                        {!wallet.isPrimary && (
+                          <Button
+                            onClick={() => detachWallet(wallet.address)}
+                            disabled={isBusy}
+                            className="mt-2 w-full rounded-md border border-red-300/20 bg-red-400/10 text-red-200 hover:bg-red-400/20 text-xs h-8"
+                          >
+                            <Unlink className="mr-1.5 h-3 w-3" /> Detach
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Attach New Wallet */}
+              {((user.wallets || []).length || 1) < 10 && (
+                <div className="rounded-md border border-dashed border-white/15 bg-white/5 p-3">
+                  {!showAttachWallet ? (
+                    <Button
+                      onClick={() => setShowAttachWallet(true)}
+                      className="w-full rounded-md border border-white/20 bg-transparent hover:bg-white/10 text-sm"
+                    >
+                      <Plus className="mr-2 h-4 w-4" /> Attach New Wallet
+                    </Button>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium text-white flex items-center gap-2">
+                          <Link size={14} /> Connect & Sign
+                        </p>
+                        <button onClick={() => setShowAttachWallet(false)} className="text-xs text-zinc-500 hover:text-white transition-colors">
+                          Cancel
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-zinc-400">
+                        Select a wallet provider below. You'll sign a message to prove ownership — no transaction is sent.
+                      </p>
+                      <div className="space-y-2">
+                        {WALLET_PROVIDERS.map((entry) => {
+                          const available = (() => { try { return !!entry.getProvider(); } catch { return false; } })();
+                          return (
+                            <button
+                              key={entry.key}
+                              onClick={() => void attachWallet(entry.key)}
+                              disabled={!available || isBusy}
+                              className={`w-full flex items-center justify-between gap-2 rounded-md border p-3 text-left transition-all ${
+                                available
+                                  ? 'border-white/10 bg-black/30 hover:bg-white/10 cursor-pointer'
+                                  : 'border-white/5 bg-black/20 opacity-40 cursor-not-allowed'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-lg">{entry.icon}</span>
+                                <div>
+                                  <p className="text-sm text-white font-medium">{entry.name}</p>
+                                  <p className="text-[10px] text-zinc-500">{available ? 'Detected — click to connect & sign' : 'Not installed'}</p>
+                                </div>
+                              </div>
+                              {available && <Wallet size={14} className="text-emerald-400 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[10px] text-zinc-500 text-center">
+                        Don't see your wallet? Make sure the browser extension is installed and enabled.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-            <div className="rounded-md border border-white/10 bg-white/5 p-3">
-              <p className="text-sm font-medium text-white">Login with mobile number</p>
-              <p className="mt-1 text-xs text-zinc-400">Use OTP login. New mobile numbers get one primary mobile-created wallet.</p>
-              <div className="mt-3 space-y-3">
-                <Input value={phone} onChange={(event) => setPhone(event.target.value)} className="rounded-md bg-white/10" placeholder="Mobile number" />
-                <Input value={otp} onChange={(event) => setOtp(event.target.value)} className="rounded-md bg-white/10" placeholder="OTP, demo is 123456" />
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <Button onClick={sendOtp} disabled={isBusy || !phone.trim()} className="rounded-md bg-white text-black hover:bg-zinc-200">
-                    Send OTP
+          ) : (
+            <>
+              <p className="text-sm text-zinc-300">
+                Choose wallet login or mobile-number login. Mobile login creates a custodial Solana wallet the first time and reuses it on every later login.
+              </p>
+              <div className="mt-4 space-y-3">
+                <div className="rounded-md border border-white/10 bg-white/5 p-3">
+                  <p className="text-sm font-medium text-white">Login with wallet</p>
+                  <p className="mt-1 text-xs text-zinc-400">Connect a Solana wallet and sign a message. No transaction is sent.</p>
+                  <Button onClick={login} disabled={isBusy} className="mt-3 w-full rounded-md bg-emerald-400 text-black hover:bg-emerald-300">
+                    <Wallet className="mr-2 h-4 w-4" /> Login with wallet
                   </Button>
-                  <Button onClick={continueWithPhone} disabled={isBusy || !phone.trim() || !otp.trim()} className="rounded-md bg-emerald-400 text-black hover:bg-emerald-300">
-                    Login with mobile
+                </div>
+                <div className="rounded-md border border-white/10 bg-white/5 p-3">
+                  <p className="text-sm font-medium text-white">Login with mobile number</p>
+                  <p className="mt-1 text-xs text-zinc-400">Use OTP login. New mobile numbers get one primary mobile-created wallet.</p>
+                  <div className="mt-3 space-y-3">
+                    <Input value={phone} onChange={(event) => setPhone(event.target.value)} className="rounded-md bg-white/10" placeholder="Mobile number" />
+                    <Input value={otp} onChange={(event) => setOtp(event.target.value)} className="rounded-md bg-white/10" placeholder="OTP, demo is 123456" />
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <Button onClick={sendOtp} disabled={isBusy || !phone.trim()} className="rounded-md bg-white text-black hover:bg-zinc-200">
+                        Send OTP
+                      </Button>
+                      <Button onClick={continueWithPhone} disabled={isBusy || !phone.trim() || !otp.trim()} className="rounded-md bg-emerald-400 text-black hover:bg-emerald-300">
+                        Login with mobile
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-md border border-white/10 bg-white/5 p-3">
+                  <p className="text-sm font-medium text-white">Attach wallet to mobile account</p>
+                  <p className="mt-1 text-xs text-zinc-400">After wallet login, verify a mobile number to keep both wallets under the same account.</p>
+                  <Button onClick={attachPhone} disabled={isBusy || !user || !phone.trim() || !otp.trim()} className="mt-3 w-full rounded-md border border-white/20 bg-transparent hover:bg-white/10">
+                    Attach current wallet
                   </Button>
                 </div>
               </div>
-            </div>
-            <div className="rounded-md border border-white/10 bg-white/5 p-3">
-              <p className="text-sm font-medium text-white">Attach wallet to mobile account</p>
-              <p className="mt-1 text-xs text-zinc-400">After wallet login, verify a mobile number to keep both wallets under the same account.</p>
-              <Button onClick={attachPhone} disabled={isBusy || !user || !phone.trim() || !otp.trim()} className="mt-3 w-full rounded-md border border-white/20 bg-transparent hover:bg-white/10">
-                Attach current wallet
-              </Button>
-            </div>
-          </div>
-          {user && (
-            <div className="mt-4 space-y-2 rounded-md bg-white/5 p-3 text-sm text-zinc-200">
-              <p>User ID: {user.id}</p>
-              <p>Phone: {user.phone.startsWith('wallet:') ? 'Not attached yet' : user.phone}</p>
-              <div className="space-y-2 pt-2">
-                {(user.wallets || [{ address: user.wallet_address, label: 'Primary wallet', isPrimary: true, type: 'primary' }]).map((wallet) => (
-                  <div key={wallet.address} className="rounded-md border border-white/10 bg-black/30 p-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-zinc-300">{wallet.label}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-md bg-emerald-400/10 px-2 py-1 text-xs text-emerald-200">{formatSol(wallet.balance)}</span>
-                        <span className="rounded-md bg-white/10 px-2 py-1 text-xs text-zinc-300">
-                          {wallet.isPrimary ? 'Primary' : 'Attached'}
-                        </span>
-                      </div>
-                    </div>
-                    <button onClick={() => copyWallet(wallet.address)} className="mt-2 flex w-full items-start justify-between gap-2 rounded-md bg-white/5 p-2 text-left hover:bg-white/10">
-                      <span className="break-all text-xs text-zinc-300">{wallet.address}</span>
-                      <Copy className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
-                    </button>
-                    <p className="mt-2 text-xs text-zinc-500">
-                      {wallet.canSend ? 'Can send and receive through mobile number.' : 'Can receive and show balance here. Sign this wallet directly to spend from it.'}
-                      {copiedWallet === wallet.address ? ' Copied.' : ''}
-                    </p>
-                    {!wallet.isPrimary && (
-                      <Button
-                        onClick={() => detachWallet(wallet.address)}
-                        disabled={isBusy}
-                        className="mt-3 w-full rounded-md border border-red-300/30 bg-red-400/10 text-red-100 hover:bg-red-400/20"
-                      >
-                        <Unlink className="mr-2 h-4 w-4" /> Detach external wallet
-                      </Button>
-                    )}
-                    {wallet.isPrimary && (
-                      <p className="mt-3 rounded-md bg-emerald-400/10 p-2 text-xs text-emerald-100">
-                        Primary mobile-created wallet stays attached to this phone number.
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+            </>
           )}
         </Panel>
 
@@ -472,17 +679,188 @@ const InfraDemo = () => {
       </section>
 
       <section className="mx-auto grid max-w-7xl gap-5 px-6 pb-10 lg:grid-cols-2">
-        <Panel title="Send By Mobile" icon={Send}>
+        <Panel title="Send Money" icon={Send}>
           <p className="mb-4 text-sm text-zinc-300">
-            Send SOL from the mobile-created primary wallet to another registered mobile number or a direct Solana address.
+            Send SOL to a mobile number, wallet address, or scan a QR code.
           </p>
-          <div className="grid gap-3 sm:grid-cols-[1fr_8rem]">
-            <Input value={sendRecipient} onChange={(event) => setSendRecipient(event.target.value)} className="rounded-md bg-white/10" placeholder="Mobile number or wallet address" />
-            <Input value={sendAmount} onChange={(event) => setSendAmount(event.target.value)} className="rounded-md bg-white/10" placeholder="SOL" />
+
+          {/* Send Mode Tabs */}
+          <div className="flex rounded-md border border-white/10 bg-white/5 p-1 mb-4">
+            <button
+              onClick={() => { setSendMode('phone'); void stopScanner(); }}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded text-xs font-medium transition-all ${sendMode === 'phone' ? 'bg-emerald-400 text-black shadow' : 'text-zinc-400 hover:text-white'}`}
+            >
+              <Phone size={14} /> Mobile
+            </button>
+            <button
+              onClick={() => { setSendMode('wallet'); void stopScanner(); }}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded text-xs font-medium transition-all ${sendMode === 'wallet' ? 'bg-emerald-400 text-black shadow' : 'text-zinc-400 hover:text-white'}`}
+            >
+              <Wallet size={14} /> Wallet
+            </button>
+            <button
+              onClick={() => { setSendMode('qr'); void startScanner(); }}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded text-xs font-medium transition-all ${sendMode === 'qr' ? 'bg-emerald-400 text-black shadow' : 'text-zinc-400 hover:text-white'}`}
+            >
+              <QrCode size={14} /> Scan QR
+            </button>
           </div>
-          <Button onClick={sendMoney} disabled={!user || !sendRecipient.trim() || Number(sendAmount) <= 0 || isBusy} className="mt-3 w-full rounded-md bg-emerald-400 text-black hover:bg-emerald-300">
-            Send money
-          </Button>
+
+          {/* From Wallet Selector */}
+          {user && userWallets.length > 0 && (
+            <div className="mb-4">
+              <p className="text-[11px] uppercase tracking-wider text-zinc-500 font-medium mb-1.5">Send from</p>
+              <div className="relative">
+                <button
+                  onClick={() => setShowWalletSelector(!showWalletSelector)}
+                  className="w-full flex items-center justify-between gap-2 rounded-md border border-white/10 bg-white/5 p-3 text-left hover:bg-white/10 transition-colors"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className={`w-2 h-2 rounded-full shrink-0 ${selectedWalletInfo?.isPrimary ? 'bg-emerald-400' : 'bg-blue-400'}`} />
+                    <div className="min-w-0">
+                      <p className="text-sm text-white font-medium truncate">{selectedWalletInfo?.label || 'Select wallet'}</p>
+                      <p className="text-[10px] text-zinc-500 font-mono truncate">{selectedFromWallet ? shortAddress(selectedFromWallet) : '...'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-emerald-200 bg-emerald-400/10 px-2 py-0.5 rounded">{formatSol(selectedWalletInfo?.balance)}</span>
+                    <ChevronDown size={14} className={`text-zinc-400 transition-transform ${showWalletSelector ? 'rotate-180' : ''}`} />
+                  </div>
+                </button>
+                {showWalletSelector && (
+                  <div className="absolute z-20 top-full left-0 right-0 mt-1 rounded-md border border-white/10 bg-[#121619] shadow-2xl overflow-hidden">
+                    {userWallets.map((w) => (
+                      <button
+                        key={w.address}
+                        onClick={() => { setSelectedFromWallet(w.address); setShowWalletSelector(false); }}
+                        className={`w-full flex items-center justify-between gap-2 p-3 text-left hover:bg-white/10 transition-colors border-b border-white/5 last:border-0 ${w.address === selectedFromWallet ? 'bg-white/5' : ''}`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className={`w-2 h-2 rounded-full shrink-0 ${w.isPrimary ? 'bg-emerald-400' : 'bg-blue-400'}`} />
+                          <div className="min-w-0">
+                            <p className="text-sm text-white font-medium truncate">{w.label}</p>
+                            <p className="text-[10px] text-zinc-500 font-mono truncate">{shortAddress(w.address)}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs text-emerald-200">{formatSol(w.balance)}</span>
+                          {w.address === selectedFromWallet && <CheckCircle2 size={14} className="text-emerald-400" />}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Phone input */}
+          {sendMode === 'phone' && (
+            <div className="space-y-3">
+              <Input
+                value={sendRecipient}
+                onChange={(e) => setSendRecipient(e.target.value)}
+                className="rounded-md bg-white/10"
+                placeholder="+1234567890"
+              />
+              <div className="grid gap-3 sm:grid-cols-[1fr_8rem]">
+                <Input
+                  value={sendAmount}
+                  onChange={(e) => setSendAmount(e.target.value)}
+                  className="rounded-md bg-white/10"
+                  placeholder="Amount in SOL"
+                />
+                <Button
+                  onClick={sendMoney}
+                  disabled={!user || !sendRecipient.trim() || Number(sendAmount) <= 0 || isBusy}
+                  className="rounded-md bg-emerald-400 text-black hover:bg-emerald-300"
+                >
+                  Send
+                </Button>
+              </div>
+              <p className="text-[10px] text-zinc-500">Recipient must have a registered SolPay account.</p>
+            </div>
+          )}
+
+          {/* Wallet address input */}
+          {sendMode === 'wallet' && (
+            <div className="space-y-3">
+              <Input
+                value={sendRecipient}
+                onChange={(e) => setSendRecipient(e.target.value)}
+                className="rounded-md bg-white/10 font-mono text-xs"
+                placeholder="Solana wallet address (base58)"
+              />
+              <div className="grid gap-3 sm:grid-cols-[1fr_8rem]">
+                <Input
+                  value={sendAmount}
+                  onChange={(e) => setSendAmount(e.target.value)}
+                  className="rounded-md bg-white/10"
+                  placeholder="Amount in SOL"
+                />
+                <Button
+                  onClick={sendMoney}
+                  disabled={!user || !sendRecipient.trim() || Number(sendAmount) <= 0 || isBusy}
+                  className="rounded-md bg-emerald-400 text-black hover:bg-emerald-300"
+                >
+                  Send
+                </Button>
+              </div>
+              <p className="text-[10px] text-zinc-500">Send directly to any Solana wallet address on Devnet.</p>
+            </div>
+          )}
+
+          {/* QR Scanner */}
+          {sendMode === 'qr' && (
+            <div className="space-y-3">
+              <div
+                id="qr-reader-send"
+                ref={qrScannerRef}
+                className="rounded-md overflow-hidden border border-white/10 bg-black min-h-[240px] flex items-center justify-center"
+              >
+                {!isScanning && !scanResult && (
+                  <div className="text-center p-6">
+                    <ScanLine size={32} className="mx-auto mb-2 text-zinc-500" />
+                    <p className="text-sm text-zinc-400">Camera scanner will activate</p>
+                    <Button
+                      onClick={() => void startScanner()}
+                      className="mt-3 rounded-md bg-emerald-400 text-black hover:bg-emerald-300"
+                    >
+                      <QrCode className="mr-2 h-4 w-4" /> Start Scanner
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {scanResult && (
+                <div className="rounded-md border border-emerald-400/30 bg-emerald-400/10 p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-emerald-300 mb-1">Scanned Address</p>
+                  <p className="text-xs text-emerald-100 font-mono break-all">{scanResult}</p>
+                </div>
+              )}
+              {scanResult && (
+                <div className="grid gap-3 sm:grid-cols-[1fr_8rem]">
+                  <Input
+                    value={sendAmount}
+                    onChange={(e) => setSendAmount(e.target.value)}
+                    className="rounded-md bg-white/10"
+                    placeholder="Amount in SOL"
+                  />
+                  <Button
+                    onClick={sendMoney}
+                    disabled={!user || !sendRecipient.trim() || Number(sendAmount) <= 0 || isBusy}
+                    className="rounded-md bg-emerald-400 text-black hover:bg-emerald-300"
+                  >
+                    Send
+                  </Button>
+                </div>
+              )}
+              {isScanning && (
+                <Button onClick={() => void stopScanner()} className="w-full rounded-md border border-white/20 bg-transparent hover:bg-white/10">
+                  Stop Scanner
+                </Button>
+              )}
+            </div>
+          )}
         </Panel>
 
         <Panel title="Receive And Request" icon={Wallet}>

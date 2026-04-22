@@ -39,17 +39,90 @@ export type InfraPayment = {
   signature?: string | null;
 };
 
-type PhantomProvider = {
+type SolanaProvider = {
   publicKey?: { toBase58(): string };
   connect(): Promise<{ publicKey: { toBase58(): string } }>;
   signMessage(message: Uint8Array, encoding?: string): Promise<{ signature: Uint8Array }>;
+  isPhantom?: boolean;
+};
+
+type SolanaProviderEntry = {
+  key: string;
+  name: string;
+  icon: string;
+  getProvider: () => SolanaProvider | undefined;
 };
 
 declare global {
   interface Window {
-    solana?: PhantomProvider & { isPhantom?: boolean };
+    solana?: SolanaProvider & { isPhantom?: boolean };
+    phantom?: { solana?: SolanaProvider };
+    backpack?: SolanaProvider;
+    solflare?: SolanaProvider & { isSolflare?: boolean };
+    glowSolana?: SolanaProvider;
+    coin98?: { sol?: SolanaProvider };
+    xnft?: { solana?: SolanaProvider };
   }
 }
+
+export const WALLET_PROVIDERS: SolanaProviderEntry[] = [
+  {
+    key: 'phantom',
+    name: 'Phantom',
+    icon: '👻',
+    getProvider: () => window.phantom?.solana || (window.solana?.isPhantom ? window.solana : undefined),
+  },
+  {
+    key: 'backpack',
+    name: 'Backpack',
+    icon: '🎒',
+    getProvider: () => window.backpack,
+  },
+  {
+    key: 'solflare',
+    name: 'Solflare',
+    icon: '🔆',
+    getProvider: () => window.solflare?.isSolflare ? window.solflare : undefined,
+  },
+  {
+    key: 'glow',
+    name: 'Glow',
+    icon: '✨',
+    getProvider: () => window.glowSolana,
+  },
+  {
+    key: 'coin98',
+    name: 'Coin98',
+    icon: '🪙',
+    getProvider: () => window.coin98?.sol,
+  },
+];
+
+export const detectWalletProvider = (providerKey?: string): { provider: SolanaProvider; name: string; icon: string } | null => {
+  if (providerKey) {
+    const entry = WALLET_PROVIDERS.find((p) => p.key === providerKey);
+    if (entry) {
+      const provider = entry.getProvider();
+      if (provider) return { provider, name: entry.name, icon: entry.icon };
+    }
+  }
+  // Auto-detect: return first available
+  for (const entry of WALLET_PROVIDERS) {
+    const provider = entry.getProvider();
+    if (provider) return { provider, name: entry.name, icon: entry.icon };
+  }
+  return null;
+};
+
+export const getAvailableProviders = (): SolanaProviderEntry[] => {
+  return WALLET_PROVIDERS.filter((entry) => {
+    try {
+      return !!entry.getProvider();
+    } catch {
+      return false;
+    }
+  });
+};
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 const WS_URL = (import.meta.env.VITE_WS_URL || API_URL).replace(/^http/, 'ws');
@@ -83,12 +156,13 @@ export const infraClient = {
     });
   },
 
-  async loginWithWallet() {
-    const provider = window.solana;
-    if (!provider) {
-      throw new Error('Install Phantom or another window.solana wallet to use wallet login.');
+  async loginWithWallet(providerKey?: string) {
+    const detected = detectWalletProvider(providerKey);
+    if (!detected) {
+      throw new Error('No Solana wallet found. Install Phantom, Backpack, Solflare, or another compatible wallet.');
     }
 
+    const { provider, name } = detected;
     const connected = await provider.connect();
     const walletAddress = connected.publicKey.toBase58();
     const challenge = await request<{ message: string; nonce: string }>('/api/auth/wallet/challenge', {
@@ -104,7 +178,7 @@ export const infraClient = {
         signature: Array.from(signed.signature),
       },
     });
-    return session;
+    return { ...session, providerName: name };
   },
 
   attachPhoneToWallet(token: string, phone: string, otp: string) {
@@ -113,6 +187,40 @@ export const infraClient = {
       token,
       body: { phone, otp },
     });
+  },
+
+  async attachWalletBySignature(token: string, providerKey?: string) {
+    const detected = detectWalletProvider(providerKey);
+    if (!detected) {
+      throw new Error('No Solana wallet found. Install a compatible wallet extension.');
+    }
+
+    const { provider, name } = detected;
+    const connected = await provider.connect();
+    const walletAddress = connected.publicKey.toBase58();
+
+    // Request challenge
+    const challenge = await request<{ message: string; nonce: string }>('/api/auth/wallet/challenge', {
+      method: 'POST',
+      body: { walletAddress },
+    });
+
+    // Sign the challenge message
+    const signed = await provider.signMessage(new TextEncoder().encode(challenge.message), 'utf8');
+
+    // Attach wallet
+    const result = await request<{ user: InfraUser; message: string }>('/api/auth/wallet/attach', {
+      method: 'POST',
+      token,
+      body: {
+        walletAddress,
+        nonce: challenge.nonce,
+        signature: Array.from(signed.signature),
+        label: `${name} wallet`,
+      },
+    });
+
+    return { ...result, providerName: name, walletAddress };
   },
 
   detachWallet(token: string, walletAddress: string) {
@@ -158,7 +266,7 @@ export const infraClient = {
     });
   },
 
-  sendMoney(token: string, payload: { phone: string; amount: number; token?: 'SOL' | 'USDC' }) {
+  sendMoney(token: string, payload: { phone: string; amount: number; token?: 'SOL' | 'USDC'; fromWallet?: string }) {
     return request<{ message: string; transaction: { id: string; tx_hash: string; amount: number; status: string } }>('/api/payments/send', {
       method: 'POST',
       token,
