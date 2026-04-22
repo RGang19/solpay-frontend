@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useCallback, useState, type ReactNode } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Bell, CheckCircle2, ChevronDown, Code2, Copy, CreditCard, KeyRound, Link, LogOut, Phone, Plus, QrCode, Radio, ScanLine, Send, Shield, Unlink, Wallet } from 'lucide-react';
+import { Bell, CheckCircle2, ChevronDown, Code2, Copy, CreditCard, KeyRound, Link, LogOut, Phone, Plus, QrCode, Radio, ScanLine, Send, Shield, Star, Unlink, Wallet } from 'lucide-react';
 import { infraClient, getAvailableProviders, WALLET_PROVIDERS, type InfraPayment, type InfraUser, type InfraWallet, type NotificationItem } from '@/lib/infraClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -372,6 +372,28 @@ const InfraDemo = () => {
     }
   };
 
+  const setPrimary = async (walletAddress: string) => {
+    if (!token) return;
+    setIsBusy(true);
+    try {
+      const response = await infraClient.setPrimaryWallet(token, walletAddress);
+      setUser(response.user);
+      setSelectedFromWallet(walletAddress);
+      toast({
+        title: 'Primary wallet updated',
+        description: `${shortAddress(walletAddress)} is now your primary wallet.`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Failed to set primary',
+        description: error instanceof Error ? error.message : 'Could not update primary wallet.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
   const verifyPayment = async () => {
     if (!token || !payment) return;
     setIsBusy(true);
@@ -529,13 +551,22 @@ const InfraDemo = () => {
                           <p className="text-[10px] text-emerald-300 mt-1">Copied to clipboard</p>
                         )}
                         {!wallet.isPrimary && (
-                          <Button
-                            onClick={() => detachWallet(wallet.address)}
-                            disabled={isBusy}
-                            className="mt-2 w-full rounded-md border border-red-300/20 bg-red-400/10 text-red-200 hover:bg-red-400/20 text-xs h-8"
-                          >
-                            <Unlink className="mr-1.5 h-3 w-3" /> Detach
-                          </Button>
+                          <div className="mt-2 grid grid-cols-2 gap-2">
+                            <Button
+                              onClick={() => setPrimary(wallet.address)}
+                              disabled={isBusy}
+                              className="rounded-md border border-emerald-300/20 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20 text-xs h-8"
+                            >
+                              <Star className="mr-1.5 h-3 w-3" /> Set Primary
+                            </Button>
+                            <Button
+                              onClick={() => detachWallet(wallet.address)}
+                              disabled={isBusy}
+                              className="rounded-md border border-red-300/20 bg-red-400/10 text-red-200 hover:bg-red-400/20 text-xs h-8"
+                            >
+                              <Unlink className="mr-1.5 h-3 w-3" /> Detach
+                            </Button>
+                          </div>
                         )}
                       </div>
                     );

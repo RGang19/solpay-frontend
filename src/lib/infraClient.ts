@@ -231,6 +231,14 @@ export const infraClient = {
     });
   },
 
+  setPrimaryWallet(token: string, walletAddress: string) {
+    return request<{ user: InfraUser; message: string }>('/api/auth/wallet/set-primary', {
+      method: 'POST',
+      token,
+      body: { walletAddress },
+    });
+  },
+
   async getCurrentUser(token: string) {
     const response = await request<{ user: InfraUser }>('/api/auth/session/me', { token });
     return response.user;
